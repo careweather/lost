@@ -44,7 +44,8 @@ private:
     std::ostream *stream;
 };
 
-// use the environment variable LOST_BSC_PATH, or read from ./bright-star-catalog.tsv
+// LOST_HIP_PATH -> HipparcosParse; else LOST_BSC_PATH or ./bright-star-catalog.tsv -> BscParse
+Catalog HipparcosParse(std::string tsvPath);
 const Catalog &CatalogRead();
 // Convert a cairo surface to array of grayscale bytes
 unsigned char *SurfaceToGrayscaleImage(cairo_surface_t *cairoSurface);

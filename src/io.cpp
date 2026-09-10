@@ -85,6 +85,34 @@ std::vector<CatalogStar> BscParse(std::string tsvPath) {
     return result;
 }
 
+/// Parse Hipparcos-1 from a VizieR TSV: ra|dec|HIP|Vmag
+Catalog HipparcosParse(std::string tsvPath) {
+    Catalog result;
+    FILE *file;
+    double raj2000, dej2000;
+    int magnitudeHigh, magnitudeLow, name;
+
+    file = fopen(tsvPath.c_str(), "r");
+    if (file == NULL) {
+        printf("Error opening file: %s\n", strerror(errno));
+        exit(1);
+        return result;
+    }
+
+    while (EOF != fscanf(file, "%lf|%lf|%d|%d.%d",
+                         &raj2000, &dej2000,
+                         &name,
+                         &magnitudeHigh, &magnitudeLow)) {
+        result.push_back(CatalogStar(DegToRad(raj2000),
+                                     DegToRad(dej2000),
+                                     magnitudeHigh*100 + (magnitudeHigh < 0 ? -magnitudeLow : magnitudeLow),
+                                     name));
+    }
+
+    fclose(file);
+    return result;
+}
+
 #ifndef DEFAULT_BSC_PATH
 #define DEFAULT_BSC_PATH "bright-star-catalog.tsv"
 #endif
@@ -96,8 +124,14 @@ const Catalog &CatalogRead() {
 
     if (!readYet) {
         readYet = true;
-        char *tsvPath = getenv("LOST_BSC_PATH");
-        catalog = BscParse(tsvPath ? tsvPath : DEFAULT_BSC_PATH);
+        char *hipPath = getenv("LOST_HIP_PATH");
+        if (hipPath) {
+            catalog = HipparcosParse(hipPath);
+            assert(catalog.size() > 10000);
+        } else {
+            char *tsvPath = getenv("LOST_BSC_PATH");
+            catalog = BscParse(tsvPath ? tsvPath : DEFAULT_BSC_PATH);
+        }
         // perform essential narrowing
         // remove all stars with exactly the same position as another, keeping the one with brighter magnitude
         std::sort(catalog.begin(), catalog.end(), [](const CatalogStar &a, const CatalogStar &b) {

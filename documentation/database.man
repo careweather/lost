@@ -31,6 +31,18 @@ well as the catalog. The different database types contain a key which the star i
 algorithms use to automatically select the correct sub-database in a multi-database. It's presently
 impossible to include two different databases of the same type in a multi-database.
 
+.SH SOURCE CATALOG
+
+By default LOST reads the Bright Star Catalog from \fIbright-star-catalog.tsv\fP (override with
+\fBLOST_BSC_PATH\fP). Star names in the database are HR numbers.
+
+To identify against Hipparcos-1 instead, run \fBmake hipparcos-catalog.tsv\fP and set
+\fBLOST_HIP_PATH\fP to that file before running \fBdatabase\fP or \fBpipeline\fP. Rebuild the \fI.dat\fP
+after switching catalogs. Printed star IDs will be HIP numbers.
+
+The Hipparcos extract is about 15,000 stars at V <= 7. The default \fB--max-stars\fP 10000 will drop
+the dimmest unless you raise it (for example \fB--max-stars 20000\fP).
+
 .SH STAR IDENTIFICATION ALGO <-> DATABASE TYPE
 
 Different star identification algorithms require different databases:

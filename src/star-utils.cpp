@@ -96,7 +96,7 @@ void SerializeCatalogStar(SerializeContext *ser, const CatalogStar &catalogStar,
     }
     if (inclName) {
         // TODO: double check that bools aren't some special bitwise thing in C++
-        SerializePrimitive<int16_t>(ser, catalogStar.name);
+        SerializePrimitive<int32_t>(ser, catalogStar.name);
     }
 }
 
@@ -114,7 +114,7 @@ CatalogStar DeserializeCatalogStar(DeserializeContext *des, bool inclMagnitude, 
         result.magnitude = -424242; // TODO, what to do about special values, since there's no good ones for ints.
     }
     if (inclName) {
-        result.name = DeserializePrimitive<int16_t>(des);
+        result.name = DeserializePrimitive<int32_t>(des);
     } else {
         result.name = -1;
     }

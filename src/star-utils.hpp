@@ -9,7 +9,7 @@
 
 namespace lost {
 
-/// A star from the Bright Star Catalog.
+/// A star from a source catalog (BSC, Hipparcos, etc).
 class CatalogStar {
 public:
     CatalogStar() = default;

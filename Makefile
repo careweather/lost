@@ -36,6 +36,7 @@ BIN  := lost
 TEST_BIN := ./lost-test
 
 BSC  := bright-star-catalog.tsv
+HIP  := hipparcos-catalog.tsv
 
 LIBS     := -L/opt/homebrew/lib -lcairo
 CFLAGS = -I/opt/homebrew/include/cairo
@@ -88,6 +89,9 @@ $(BUILD_DIR)/test/%.o: test/%.cpp
 
 -include $(DEPS)
 
+$(HIP):
+	sh download-hipparcos.sh
+
 test: $(BIN) $(BSC) $(TEST_BIN)
 	$(TEST_BIN)
 	# bash ./test/scripts/pyramid-incorrect.sh
@@ -106,6 +110,6 @@ clean:
 	rm -f src/*.o src/*.d test/*.o test/*.d
 
 clean_all: clean
-	rm -f $(BSC)
+	rm -f $(BSC) $(HIP)
 
 .PHONY: all clean test docs lint

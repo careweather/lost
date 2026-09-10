@@ -2,7 +2,11 @@
 
 #include <catch.hpp>
 
+#include <algorithm>
+
+#include "attitude-utils.hpp"
 #include "io.hpp"
+#include "serialize-helpers.hpp"
 #include "star-utils.hpp"
 
 using namespace lost; // NOLINT
@@ -46,4 +50,38 @@ TEST_CASE("Narrow catalog, minDistance", "[narrow-catalog]") {
     CHECK(FindNamedStar(narrowed1, 1999) != narrowed1.end());
     CHECK(FindNamedStar(narrowed2, 2061) == narrowed2.end());
     CHECK(FindNamedStar(narrowed2, 1999) == narrowed2.end());
+}
+
+TEST_CASE("HipparcosParse fixture", "[hipparcos]") {
+    Catalog catalog = HipparcosParse("test/fixtures/hipparcos-fixture.tsv");
+    REQUIRE(catalog.size() == 2);
+
+    auto vega = FindNamedStar(catalog, 91262);
+    REQUIRE(vega != catalog.end());
+    CHECK(vega->name == 91262);
+    CHECK(vega->magnitude == 3);
+    Vec3 vegaExpected = SphericalToSpatial(DegToRad(279.234734), DegToRad(38.783689));
+    CHECK(vega->spatial.x == Approx(vegaExpected.x).margin(1e-5));
+    CHECK(vega->spatial.y == Approx(vegaExpected.y).margin(1e-5));
+    CHECK(vega->spatial.z == Approx(vegaExpected.z).margin(1e-5));
+
+    auto sirius = FindNamedStar(catalog, 32349);
+    REQUIRE(sirius != catalog.end());
+    CHECK(sirius->magnitude == -146);
+}
+
+TEST_CASE("Catalog name serialization holds HIP ids", "[hipparcos] [serialize]") {
+    Catalog catalog = {
+        CatalogStar(DegToRad(279.234734), DegToRad(38.783689), 3, 91262),
+    };
+    SerializeContext ser;
+    SerializeCatalog(&ser, catalog, false, true);
+    DeserializeContext des(ser.buffer.data());
+    bool inclMag = false;
+    bool inclName = false;
+    Catalog out = DeserializeCatalog(&des, &inclMag, &inclName);
+    REQUIRE(out.size() == 1);
+    CHECK(inclName);
+    CHECK_FALSE(inclMag);
+    CHECK(out[0].name == 91262);
 }
