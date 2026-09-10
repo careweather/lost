@@ -11,11 +11,13 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <fstream>
 #include <iostream>
 #include <memory>
 #include <random>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <map>
@@ -435,6 +437,105 @@ PipelineInputList GetPngPipelineInput(const PipelineOptions &values) {
     return result;
 }
 
+CentroidsPipelineInput::CentroidsPipelineInput(Stars stars, Camera camera, const Catalog &catalog)
+    : stars(std::move(stars)), camera(camera), catalog(catalog) {}
+
+/// Parse whitespace-separated centroid lines: x y [brightness]. Comments start with #.
+static Stars ParseCentroidStream(std::istream &in, const Camera &camera, const std::string &sourceName) {
+    Stars stars;
+    std::string line;
+    int lineNumber = 0;
+    while (std::getline(in, line)) {
+        lineNumber++;
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        std::string::size_type comment = line.find('#');
+        if (comment != std::string::npos) {
+            line = line.substr(0, comment);
+        }
+
+        std::istringstream iss(line);
+        float x;
+        float y;
+        if (!(iss >> x)) {
+            continue;
+        }
+        if (!(iss >> y)) {
+            std::cerr << "ERROR: " << sourceName << " line " << lineNumber
+                      << " has an x coordinate but no y coordinate." << std::endl;
+            exit(1);
+        }
+
+        float brightness = 0;
+        bool hasBrightness = static_cast<bool>(iss >> brightness);
+        int magnitude = 0;
+        if (hasBrightness) {
+            magnitude = static_cast<int>(std::lround(brightness));
+            if (magnitude < 0) {
+                std::cerr << "ERROR: " << sourceName << " line " << lineNumber
+                          << " has negative brightness " << brightness
+                          << ". Brightness must be >= 0 (larger is brighter)." << std::endl;
+                exit(1);
+            }
+        }
+
+        Vec2 position = {x, y};
+        if (!camera.InSensor(position)) {
+            std::cerr << "ERROR: " << sourceName << " line " << lineNumber
+                      << " centroid (" << x << ", " << y
+                      << ") is outside the sensor "
+                      << camera.XResolution() << "x" << camera.YResolution() << "." << std::endl;
+            exit(1);
+        }
+
+        stars.push_back(Star(x, y, 1.0f, 1.0f, magnitude));
+    }
+
+    if (stars.empty()) {
+        std::cerr << "ERROR: " << sourceName << " contains no centroids." << std::endl;
+        exit(1);
+    }
+
+    return stars;
+}
+
+/// Create a CentroidsPipelineInput using command line options.
+PipelineInputList GetCentroidsPipelineInput(const PipelineOptions &values) {
+    if (values.centroidAlgo != "") {
+        std::cerr << "ERROR: --centroid-algo cannot be used with --centroids (there is no image to centroid)." << std::endl;
+        exit(1);
+    }
+    if (values.xResolution <= 0 || values.yResolution <= 0) {
+        std::cerr << "ERROR: --centroids requires --x-resolution and --y-resolution." << std::endl;
+        exit(1);
+    }
+
+    float focalLengthPixels = FocalLengthFromOptions(values, values.xResolution);
+    Camera cam = Camera(focalLengthPixels, values.xResolution, values.yResolution);
+
+    std::string sourceName = values.centroids;
+    Stars stars;
+    if (values.centroids == "-" || values.centroids == "stdin") {
+        sourceName = "stdin";
+        stars = ParseCentroidStream(std::cin, cam, sourceName);
+    } else {
+        std::ifstream file(values.centroids);
+        if (!file) {
+            std::cerr << "ERROR: Could not open centroids file: " << values.centroids << std::endl;
+            exit(1);
+        }
+        stars = ParseCentroidStream(file, cam, sourceName);
+    }
+
+    std::cerr << "Read " << stars.size() << " centroids from " << sourceName << std::endl;
+
+    PipelineInputList result;
+    result.push_back(std::unique_ptr<PipelineInput>(
+        new CentroidsPipelineInput(std::move(stars), cam, CatalogRead())));
+    return result;
+}
+
 // AstrometryPipelineInput::AstrometryPipelineInput(const std::string &path) {
 //     // create from path, TODO
 // }
@@ -840,13 +941,32 @@ PipelineInputList GetGeneratedPipelineInput(const PipelineOptions &values) {
 
 typedef PipelineInputList (*PipelineInputFactory)();
 
+static void ErrorIfCameraResolutionSet(const PipelineOptions &values) {
+    if (values.xResolution != 0 || values.yResolution != 0) {
+        std::cerr << "ERROR: --x-resolution and --y-resolution are only valid with --centroids." << std::endl;
+        exit(1);
+    }
+}
+
 /// Come up with a list of pipeline inputs based on command line options.
 PipelineInputList GetPipelineInput(const PipelineOptions &values) {
+    int numSources = (values.png != "") + (values.centroids != "") + (values.generate != 0);
+    if (numSources > 1) {
+        std::cerr << "ERROR: --png, --centroids, and --generate are mutually exclusive." << std::endl;
+        exit(1);
+    }
 
     if (values.png != "") {
+        ErrorIfCameraResolutionSet(values);
         return GetPngPipelineInput(values);
-    } else {
+    } else if (values.centroids != "") {
+        return GetCentroidsPipelineInput(values);
+    } else if (values.generate != 0) {
+        ErrorIfCameraResolutionSet(values);
         return GetGeneratedPipelineInput(values);
+    } else {
+        std::cerr << "ERROR: No pipeline input specified. Try --png, --centroids, or --generate." << std::endl;
+        exit(1);
     }
 }
 
@@ -1013,6 +1133,27 @@ PipelineOutput Pipeline::Go(const PipelineInput &input) {
     } else if (centroidAlgorithm) {
         std::cerr << "ERROR: Centroid algorithm specified, but no input image to run it on." << std::endl;
         exit(1);
+    } else if (inputStars) {
+        Stars stars = *inputStars;
+        // Generated stars can have negative magnitudes; only filter file-loaded centroids, which
+        // have no pre-existing star IDs whose indices would be invalidated by filtering.
+        if (!inputStarIds && (centroidMinMagnitude > 0 || centroidMinStars > 0)) {
+            int minMagnitude = centroidMinMagnitude;
+            if (centroidMinStars > 0 && centroidMinStars < (int)stars.size()) {
+                Stars magSortedStars = stars;
+                std::sort(magSortedStars.begin(), magSortedStars.end(), [](const Star &a, const Star &b) { return a.magnitude > b.magnitude; });
+                minMagnitude = std::max(minMagnitude, magSortedStars[centroidMinStars - 1].magnitude);
+            }
+            Stars filteredStars;
+            for (const Star &star : stars) {
+                if (star.magnitude >= minMagnitude) {
+                    filteredStars.push_back(star);
+                }
+            }
+            stars = std::move(filteredStars);
+        }
+        result.stars = std::unique_ptr<Stars>(new Stars(std::move(stars)));
+        inputStars = result.stars.get();
     }
 
     if (starIdAlgorithm && database && inputStars && input.InputCamera()) {
@@ -1741,7 +1882,7 @@ void PipelineComparison(const PipelineInputList &expected,
                         const std::vector<PipelineOutput> &actual,
                         const PipelineOptions &values) {
     if (actual.size() == 0) {
-        std::cerr << "ERROR: No output! Did you specify any input images? Try --png or --generate." << std::endl;
+        std::cerr << "ERROR: No output! Did you specify any input images? Try --png, --centroids, or --generate." << std::endl;
         exit(1);
     }
 
@@ -1776,8 +1917,8 @@ void PipelineComparison(const PipelineInputList &expected,
                               PipelineComparatorPlotExpected, values.plotExpected, true);
     }
     if (values.plotOutput != "") {
-        LOST_PIPELINE_COMPARE(actual.size() == 1 && (actual[0].stars || actual[0].starIds),
-                              "--plot-output requires exactly 1 output image, and for either centroids or star IDs to be available on that output image. " + std::to_string(actual.size()) + " many output images were provided.",
+        LOST_PIPELINE_COMPARE(expected[0]->InputImage() && actual.size() == 1 && (actual[0].stars || actual[0].starIds),
+                              "--plot-output requires exactly 1 input image, and for either centroids or star IDs to be available. " + std::to_string(actual.size()) + " many outputs were provided.",
                               PipelineComparatorPlotOutput, values.plotOutput, true);
     }
     if (values.printExpectedCentroids != "") {

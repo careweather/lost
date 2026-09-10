@@ -16,6 +16,9 @@
 
 // CAMERA
 LOST_CLI_OPTION("png"          , std::string, png         , "" , optarg       , kNoDefaultArgument)
+LOST_CLI_OPTION("centroids"    , std::string, centroids   , "" , optarg       , kNoDefaultArgument)
+LOST_CLI_OPTION("x-resolution" , int        , xResolution , 0  , atoi(optarg) , kNoDefaultArgument)
+LOST_CLI_OPTION("y-resolution" , int        , yResolution , 0  , atoi(optarg) , kNoDefaultArgument)
 LOST_CLI_OPTION("focal-length" , float      , focalLength , 0  , atof(optarg) , kNoDefaultArgument)
 LOST_CLI_OPTION("pixel-size"   , float      , pixelSize   , -1 , atof(optarg) , kNoDefaultArgument)
 LOST_CLI_OPTION("fov"          , float      , fov         , 20 , atof(optarg) , kNoDefaultArgument)

@@ -19,18 +19,19 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Simple makefile: Compile all .c files into .o files, generating "dependency" .d files too (see
+# Compile src/*.cpp and test/*.cpp into build/, generating dependency .d files too (see
 # https://stackoverflow.com/q/2394609)
 
+BUILD_DIR := build
 SRCS := $(wildcard src/*.cpp)
 TESTS := $(wildcard test/*.cpp)
 MANS := $(wildcard documentation/*.man)
 MAN_TXTS := $(patsubst documentation/%.man, documentation/%.txt, $(MANS))
 MAN_HS := $(patsubst documentation/%.man, documentation/man-%.h, $(MANS))
 DOXYGEN_DIR := ./documentation/doxygen
-OBJS := $(patsubst %.cpp,%.o,$(SRCS))
-TEST_OBJS := $(patsubst %.cpp,%.o,$(TESTS) $(filter-out %/main.o, $(OBJS)))
-DEPS := $(patsubst %.cpp,%.d,$(SRCS) $(TESTS)) # includes tests
+OBJS := $(patsubst src/%.cpp,$(BUILD_DIR)/src/%.o,$(SRCS))
+TEST_OBJS := $(patsubst test/%.cpp,$(BUILD_DIR)/test/%.o,$(TESTS)) $(filter-out $(BUILD_DIR)/src/main.o, $(OBJS))
+DEPS := $(OBJS:.o=.d) $(patsubst test/%.cpp,$(BUILD_DIR)/test/%.d,$(TESTS))
 BIN  := lost
 TEST_BIN := ./lost-test
 
@@ -69,7 +70,7 @@ documentation/%.txt: documentation/%.man
 documentation/man-%.h: documentation/%.txt
 	xxd -i $< > $@
 
-src/main.o: $(MAN_HS)
+$(BUILD_DIR)/src/main.o: $(MAN_HS)
 
 docs:
 	doxygen
@@ -77,7 +78,12 @@ docs:
 lint:
 	cpplint --recursive src test
 
-%.o: %.cpp
+$(BUILD_DIR)/src/%.o: src/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -MMD -c $< -o $@
+
+$(BUILD_DIR)/test/%.o: test/%.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -MMD -c $< -o $@
 
 -include $(DEPS)
@@ -87,14 +93,17 @@ test: $(BIN) $(BSC) $(TEST_BIN)
 	# bash ./test/scripts/pyramid-incorrect.sh
 	bash ./test/scripts/readme-examples-test.sh
 	bash ./test/scripts/random-crap.sh
+	bash ./test/scripts/centroids-input.sh
 	# bash ./test/scripts/tetra.sh
 
 $(TEST_BIN): $(TEST_OBJS)
 	$(CXX) $(LDFLAGS) -o $(TEST_BIN) $(TEST_OBJS) $(LIBS)
 
 clean:
-	rm -f $(OBJS) $(DEPS) $(TEST_OBJS) $(MAN_HS)
+	rm -rf $(BUILD_DIR) $(MAN_HS)
 	rm -rf $(DOXYGEN_DIR)
+	# leftover objects from when .o/.d were written next to sources
+	rm -f src/*.o src/*.d test/*.o test/*.d
 
 clean_all: clean
 	rm -f $(BSC)

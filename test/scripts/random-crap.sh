@@ -22,7 +22,8 @@ echo 'Issue #32: Unenlightening error message when neither --generate nor --png 
 ./lost pipeline 2>&1 | grep ERROR || exit 1
 
 echo 'Comparator assertions'
-./lost pipeline --generate 1 --plot-output /dev/null 2>&1 | grep -Fe '--plot-output' || exit 1
+# Generated images include input centroids even without --centroid-algo, so plot-output should work.
+./lost pipeline --generate 1 --plot-output /dev/null || exit 1
 ./lost pipeline --generate 1 --centroid-algo cog --plot-output /dev/null 2>&1 | grep -Fe '--plot-output' && exit 1
 
 echo 'Issue #36: Cog and Attitude without Star-ID'

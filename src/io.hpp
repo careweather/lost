@@ -177,6 +177,22 @@ private:
     const Catalog &catalog;
 };
 
+/// A pipeline input created by reading a list of star centroids from a text file or stdin.
+/// Pixel coordinates, origin at the top left. Optional brightness: larger is brighter.
+class CentroidsPipelineInput : public PipelineInput {
+public:
+    CentroidsPipelineInput(Stars, Camera, const Catalog &);
+
+    const Stars *InputStars() const override { return &stars; };
+    const Camera *InputCamera() const override { return &camera; };
+    const Catalog &GetCatalog() const override { return catalog; };
+
+private:
+    Stars stars;
+    Camera camera;
+    const Catalog &catalog;
+};
+
 /////////////////////
 // PIPELINE OUTPUT //
 /////////////////////

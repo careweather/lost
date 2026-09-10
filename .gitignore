@@ -3,6 +3,7 @@
 
 *.o
 *.d
+/build/
 *.png
 *.dat
 *.txt

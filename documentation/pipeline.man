@@ -1,4 +1,4 @@
-.TH PIPELINE 3 "06 November 2021" 
+.TH PIPELINE 3 "10 September 2026" 
 
 .SH NAME
 
@@ -8,12 +8,15 @@ pipeline \- builds a pipeline of the star identification process
 
 \fBpipeline\fP --png \fIfilepath\fP ((--focal-length \fIlength\fP --pixel-size \fIsize\fP) | --fov \fIdegrees\fP) [CENTROID OPTIONS...] [--centroid-mag-filter \fImin-mag\fP] [--database \fIfilename\fP] [STAR-ID OPTIONS...] [ATTITUDE DET OPTIONS...] [COMPARATORS...]
 .br
+\fBpipeline\fP --centroids \fIfilepath\fP --x-resolution \fIpixels\fP --y-resolution \fIpixels\fP ((--focal-length \fIlength\fP --pixel-size \fIsize\fP) | --fov \fIdegrees\fP) [--database \fIfilename\fP] [STAR-ID OPTIONS...] [ATTITUDE DET OPTIONS...] [COMPARATORS...]
+.br
 \fBpipeline\fP --generate \fInum-images\fP [(--focal-length \fIlength\fP --pixel-size \fIsize\fP) | --fov \fIdegrees\fP] [GENERATE OPTIONS...] [CENTROID OPTIONS...] [--centroid-mag-filter \fImin-mag\fP] [--database \fIfilename\fP] [STAR-ID OPTIONS...] [ATTITUDE DET OPTIONS...] [COMPARATORS...]
 
 .SH DESCRIPTION
 
 \fBpipeline\fP is the command to set the different stages of the star identification pipeline. An
-image can be taken in as input from \fIfilepath\fP, or image(s) can be procedurally generated. The pipeline has
+image can be taken in as input from \fIfilepath\fP, a list of star centroids can be read from a text
+file, or image(s) can be procedurally generated. The pipeline has
 the following stages:
 .IP \[bu] 2
 Centroiding: Determine star center positions.
@@ -26,23 +29,28 @@ Attitude determination: Use star identifiers to compute a best-fit orientation/a
 .LP
 
 The command line specifies, mainly, three things: How input should be provided to the pipeline (from
-an image file or randomly generated?), how the different stages of the pipeline should be executed
+an image file, a centroid list, or randomly generated?), how the different stages of the pipeline should be executed
 (which algorithms to use? What config options for those algorithms?), and what should be done with
 the output of the pipeline (Visualize the star-id? Figure out what percentage of stars were
 correctly identified?).
 
 .SS Pipeline Input
 
-Presently there are two ways to provide pipeline input:
+Presently there are three ways to provide pipeline input:
 .IP \[bu] 2
 Image file on disk: Use the \fB--png\fP option to specify the file path to a png to read.
+.IP \[bu] 2
+Centroid list: Use the \fB--centroids\fP option to specify a text file (or stdin) of star centroids, skipping the centroiding stage.
 .IP \[bu] 2
 Generated image: Use the \fB--generate\fP option to specify how many false images to generate.
 .LP
 
-For both input modes, you'll probably want to specify how "zoomed-in" the camera is; this can be
+These three input modes are mutually exclusive.
+
+For all input modes, you'll probably want to specify how "zoomed-in" the camera is; this can be
 done by providing both the \fB--focal-length\fP and \fB--pixel-size\fP options, or just the
-\fB--fov\fP option.
+\fB--fov\fP option. When using \fB--centroids\fP, you must also provide \fB--x-resolution\fP and
+\fB--y-resolution\fP, because there is no image from which to read the sensor size.
 
 When \fB--generate\fP is used, LOST keeps track of what the "true" centroids, star identifiers, and
 attitude are, since it has absolute knowledge of the generated image. These intermediate results can
@@ -72,7 +80,23 @@ Print the raw output of each stage (\fB--print-actual-centroids\fP, \fB--print-e
 
 .TP
 \fB--png\fP \fIfilepath\fP
-Identify the png image at the given \fIfilepath\fP.
+Identify the png image at the given \fIfilepath\fP. Mutually exclusive with \fB--centroids\fP and \fB--generate\fP.
+
+.TP
+\fB--centroids\fP \fIfilepath\fP
+Identify stars from a list of centroids instead of an image. \fIfilepath\fP is a text file, or
+\fB-\fP / \fBstdin\fP to read from stdin. Each non-comment line is whitespace-separated
+\fIx\fP \fIy\fP with an optional brightness (larger is brighter). Pixel coordinates, origin at the
+top left of the sensor. Lines starting with \fB#\fP are ignored. Mutually exclusive with
+\fB--png\fP, \fB--generate\fP, and \fB--centroid-algo\fP.
+
+.TP
+\fB--x-resolution\fP \fIpixels\fP
+Horizontal sensor resolution in pixels. Required with \fB--centroids\fP. Not valid with \fB--png\fP or \fB--generate\fP.
+
+.TP
+\fB--y-resolution\fP \fIpixels\fP
+Vertical sensor resolution in pixels. Required with \fB--centroids\fP. Not valid with \fB--png\fP or \fB--generate\fP.
 
 .TP
 \fB--focal-length\fP \fIlength\fP
@@ -145,7 +169,7 @@ Runs the \fIalgo\fP algorithm for the attitude stage of the pipeline. Current op
 
 .TP
 \fB--generate\fP \fInum-images\fP
-Generates \fInum-images\fP many images. Mutually exclusive with \fB--png\fP.
+Generates \fInum-images\fP many images. Mutually exclusive with \fB--png\fP and \fB--centroids\fP.
 
 .TP
 \fB--generate-x-resolution\fP \fIpixels\fP
