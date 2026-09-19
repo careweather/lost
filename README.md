@@ -32,16 +32,18 @@ You need Linux or macOS. On Windows, we recommend installing the Windows Subsyst
   libeigen3-dev`. Elsewhere, download the latest stable release from https://eigen.tuxfamily.org/.
   You can install it system-wide, or just extract it so that the main folder is in
   `vendor/eigen3/Eigen` under the LOST repository.
-  
+
 ### macOS Prerequisites
 
 - Download [Homebrew](https://brew.sh/), run `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"` in terminal
 - Install [cairo](https://formulae.brew.sh/formula/cairo#default) via homebrew `brew install cairo`
 - Install [Eigen]("https://formulae.brew.sh/formula/eigen#default") via homebrew `brew install eigen`
-    - Locate Eigen files and move them to `vendor/eigen3/Eigen` under the LOST repository
 - Install [groff]("https://formulae.brew.sh/formula/groff#default") via homebrew `brew install groff`
+- On Apple Silicon Macs (M1/M2/etc.), Homebrew installs to `/opt/homebrew`, which is not in the
+  compiler's default search path. Add `-I/opt/homebrew/include` to the `CXXFLAGS` line and
+  `-L/opt/homebrew/lib` to the `LDFLAGS` line in the Makefile.
 - If you get errors mentioning 'ASAN' or 'AddressSanitizer', try `make clean` and then `make LOST_DISABLE_ASAN=1` to disable ASAN. See the Linux section above for more details.
-	
+
 ### Building
 
 Clone this repository (`git clone https://github.com/uwcubesat/lost`), then `cd lost`, then
@@ -245,4 +247,3 @@ this mode.
 <!--   visualizations. Would be really cool to make it work on a phone! -->
 <!-- - [ ] Automatic corruption of images to test noise tolerance. Star removal, false star adding, -->
 <!--   moon and earth and sun adding, optical offset, focal length mismatch. -->
-

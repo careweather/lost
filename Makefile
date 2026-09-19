@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Mark Polyakov, Karen Haining, Edward Zhang
+# Copyright (c) 2020 Mark Polyakov, Karen Haining, Muki Kiboigo, Edward Zhang
 # (If you edit the file, add your name here!)
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -12,7 +12,7 @@
 # copies or substantial portions of the Software.
 #
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# IMPLIED, INCLUDING WITHOUT LIMITATION THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 # AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
@@ -38,9 +38,9 @@ TEST_BIN := ./lost-test
 BSC  := bright-star-catalog.tsv
 HIP  := hipparcos-catalog.tsv
 
-LIBS     := -L/opt/homebrew/lib -lcairo
-CFLAGS = -I/opt/homebrew/include/cairo
-CXXFLAGS := $(CXXFLAGS) -Ivendor -Isrc -Idocumentation -Wall -Wextra -Wno-missing-field-initializers -pedantic --std=c++14
+LIBS     := -lcairo
+CXXFLAGS := $(CXXFLAGS) -Ivendor -I/opt/homebrew/include -Isrc -Idocumentation -Wall -Wextra -Wno-missing-field-initializers -pedantic --std=c++14
+LDFLAGS  := $(LDFLAGS) -L/opt/homebrew/lib
 RELEASE_CXXFLAGS := $(CXXFLAGS) -O3
 # debug flags:
 CXXFLAGS := $(CXXFLAGS) -ggdb -fno-omit-frame-pointer
@@ -53,6 +53,12 @@ RELEASE_LDFLAGS := $(LDFLAGS)
 # debug link flags:
 ifndef LOST_DISABLE_ASAN
 	LDFLAGS := $(LDFLAGS) -fsanitize=address
+endif
+
+# Use Double Mode by default.
+# If compiled with LOST_FLOAT_MODE=1, we will use floats.
+ifdef LOST_FLOAT_MODE
+	CXXFLAGS := $(CXXFLAGS) -Wdouble-promotion -Werror=double-promotion -D LOST_FLOAT_MODE
 endif
 
 all: $(BIN) $(BSC)

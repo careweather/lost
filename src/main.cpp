@@ -6,8 +6,10 @@
 
 #include <assert.h>
 #include <getopt.h>
+#include <sys/types.h>
 #include <unistd.h>
 
+#include <bitset>
 #include <chrono>
 #include <cstring>
 #include <fstream>
@@ -17,6 +19,7 @@
 
 #include "centroiders.hpp"
 #include "databases.hpp"
+#include "decimal.hpp"
 #include "io.hpp"
 #include "man-database.h"
 #include "man-pipeline.h"
@@ -31,9 +34,16 @@ static void DatabaseBuild(const DatabaseOptions &values) {
 
     MultiDatabaseDescriptor dbEntries = GenerateDatabases(narrowedCatalog, values);
     SerializeContext ser = serFromDbValues(values);
-    SerializeMultiDatabase(&ser, dbEntries);
+
+    // Create & Set Flags.
+    uint32_t dbFlags = 0;
+    dbFlags |= typeid(decimal) == typeid(float) ? MULTI_DB_FLOAT_FLAG : 0;
+
+    // Serialize Flags
+    SerializeMultiDatabase(&ser, dbEntries, dbFlags);
 
     std::cerr << "Generated database with " << ser.buffer.size() << " bytes" << std::endl;
+    std::cerr << "Database flagged with " << std::bitset<8*sizeof(dbFlags)>(dbFlags) << std::endl;
 
     UserSpecifiedOutputStream pos = UserSpecifiedOutputStream(values.outputPath, true);
     pos.Stream().write((char *) ser.buffer.data(), ser.buffer.size());
