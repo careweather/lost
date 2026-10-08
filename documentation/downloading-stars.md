@@ -15,6 +15,15 @@ For Hipparcos-1 (VizieR `I/239/hip_main`, Johnson V ≤ 7, J2000 RA/Dec):
 make hipparcos-catalog.tsv
 ```
 
+VizieR applies each star's proper motion to the epoch `HIP_EPOCH`, a Julian year
+that defaults to today's date. Fast movers such as Groombridge 1830 (about 7"/yr)
+drift past LOST's star-matching tolerance within a couple of decades, so pin the
+epoch to match another tool or an observation date:
+
+```shell
+HIP_EPOCH=2025.34 make hipparcos-catalog.tsv
+```
+
 Then point LOST at it before `database` or `pipeline`:
 
 ```shell
@@ -54,7 +63,7 @@ near the top.
 
 Use http://vizier.cfa.harvard.edu/viz-bin/VizieR-3?-source=I/239/hip_main (Hipparcos-1, not
 Hipparcos-2). Same VizieR preferences as BSC: unlimited rows, `|-separated values`, J2000 decimal
-coordinates, whole sky.
+coordinates, whole sky. Set the "Epoch" preference (e.g. `J2025.34`) to apply proper motion.
 
 Check `HIP` and `Vmag`. Constrain `Vmag` to `<=7` so the catalog stays under the 16-bit pair-index
 limit used in the k-vector database. Uncheck the others.
