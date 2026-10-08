@@ -159,6 +159,32 @@ noisiness of your images. If the output file has many centroids (red boxes) wher
 visible stars, then the filter should be increased. If there are many stars without centroids, the
 filter should be decreased.
 
+## Identifying from centroids
+
+If you already have star centroids (for example from an event camera), skip centroiding and feed
+the list directly to star identification. Pixel coordinates, origin at the top left of the sensor.
+Each line is `x y` with an optional brightness (larger is brighter). `#` comments are ignored.
+
+```shell
+./lost pipeline \
+  --centroids stars.xy \
+  --x-resolution 1280 \
+  --y-resolution 720 \
+  --focal-length 35 \
+  --pixel-size 4.86 \
+  --database my-database.dat \
+  --star-id-algo tetra \
+  --attitude-algo dqm \
+  --print-attitude
+```
+
+`--x-resolution` and `--y-resolution` are required because there is no image to read the sensor size
+from. The focal length (mm) and pixel size (µm) above match the IDS UE-39B0XCP (Sony IMX636,
+1280×720, 4.86 µm) with a 35 mm lens; equivalently you can pass `--fov` instead of those two.
+Use `--star-id-algo py` with a k-vector database instead of tetra if you built the database
+with `--kvector`. Plotting flags that need an image (`--plot-output`, etc.) are not available in
+this mode.
+
 <!-- # Parts of a Star Tracking System -->
 
 <!-- - **Undistortion or cropping:** It's critical for captured images to be "flat". Unfortunately, real-world lenses make -->

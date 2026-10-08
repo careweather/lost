@@ -17,10 +17,13 @@
 #include "decimal.hpp"
 
 // CAMERA
-LOST_CLI_OPTION("png"          , std::string  , png         , "" , optarg       , kNoDefaultArgument)
-LOST_CLI_OPTION("focal-length" , decimal      , focalLength , 0  , atof(optarg) , kNoDefaultArgument)
-LOST_CLI_OPTION("pixel-size"   , decimal      , pixelSize   , -1 , atof(optarg) , kNoDefaultArgument)
-LOST_CLI_OPTION("fov"          , decimal      , fov         , 20 , atof(optarg) , kNoDefaultArgument)
+LOST_CLI_OPTION("png"          , std::string, png         , "" , optarg                 , kNoDefaultArgument)
+LOST_CLI_OPTION("centroids"    , std::string, centroids   , "" , optarg                 , kNoDefaultArgument)
+LOST_CLI_OPTION("x-resolution" , int        , xResolution , 0  , atoi(optarg)           , kNoDefaultArgument)
+LOST_CLI_OPTION("y-resolution" , int        , yResolution , 0  , atoi(optarg)           , kNoDefaultArgument)
+LOST_CLI_OPTION("focal-length" , decimal    , focalLength , 0  , STR_TO_DECIMAL(optarg) , kNoDefaultArgument)
+LOST_CLI_OPTION("pixel-size"   , decimal    , pixelSize   , -1 , STR_TO_DECIMAL(optarg) , kNoDefaultArgument)
+LOST_CLI_OPTION("fov"          , decimal    , fov         , 20 , STR_TO_DECIMAL(optarg) , kNoDefaultArgument)
 
 // PIPELINE STAGES
 LOST_CLI_OPTION("centroid-algo"            , std::string, centroidAlgo                  , ""  , optarg                  , "cog")

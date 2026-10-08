@@ -1,10 +1,41 @@
 # Downloading a Star Catalog
 
-# Automatically
-Run `make bright-star-catalog.tsv` from the base directory of LOST to generate
-`bright-star-database.tsv`. Simply running `make` will do this as well.
+LOST can identify against the Yale Bright Star Catalog (BSC, HR numbers) or
+Hipparcos-1 (HIP numbers). BSC is the default. Databases are built from whichever
+catalog `CatalogRead()` loads; rebuild the `.dat` after switching.
 
-# Manually
+# Automatically
+
+Run `make bright-star-catalog.tsv` from the base directory of LOST to generate
+`bright-star-catalog.tsv`. Simply running `make` will do this as well.
+
+For Hipparcos-1 (VizieR `I/239/hip_main`, Johnson V ≤ 7, J2000 RA/Dec):
+
+```shell
+make hipparcos-catalog.tsv
+```
+
+VizieR applies each star's proper motion to the epoch `HIP_EPOCH`, a Julian year
+that defaults to today's date. Fast movers such as Groombridge 1830 (about 7"/yr)
+drift past LOST's star-matching tolerance within a couple of decades, so pin the
+epoch to match another tool or an observation date:
+
+```shell
+HIP_EPOCH=2025.34 make hipparcos-catalog.tsv
+```
+
+Then point LOST at it before `database` or `pipeline`:
+
+```shell
+export LOST_HIP_PATH=hipparcos-catalog.tsv
+./lost database --max-stars 20000 --min-mag 7 --kvector --output hip-kvector.dat
+```
+
+The Hipparcos extract is about 15,000 stars. The default `--max-stars 10000` will
+drop the dimmest unless you raise it. Printed star IDs will be HIP numbers.
+
+# Manually (BSC)
+
 I recommend using http://vizier.cfa.harvard.edu/viz-bin/VizieR-3?-source=I/50. VizieR is a web
 interface for accessing about a bajillion different catalogs of stellar objects. This specific
 catalog is the "Brightest Stars Catalog". It contains about 9,000 stars, which are all that any
@@ -27,3 +58,15 @@ Then hit "Submit" and download your stars!
 
 After downloading, remove all the lines from the file that aren't data; there's some header-y stuff
 near the top.
+
+# Manually (Hipparcos)
+
+Use http://vizier.cfa.harvard.edu/viz-bin/VizieR-3?-source=I/239/hip_main (Hipparcos-1, not
+Hipparcos-2). Same VizieR preferences as BSC: unlimited rows, `|-separated values`, J2000 decimal
+coordinates, whole sky. Set the "Epoch" preference (e.g. `J2025.34`) to apply proper motion.
+
+Check `HIP` and `Vmag`. Constrain `Vmag` to `<=7` so the catalog stays under the 16-bit pair-index
+limit used in the k-vector database. Uncheck the others.
+
+The data lines should look like `ra|dec|HIP|Vmag`. Save as `hipparcos-catalog.tsv` and set
+`LOST_HIP_PATH`.

@@ -31,6 +31,18 @@ well as the catalog. The different database types contain a key which the star i
 algorithms use to automatically select the correct sub-database in a multi-database. It's presently
 impossible to include two different databases of the same type in a multi-database.
 
+.SH SOURCE CATALOG
+
+By default LOST reads the Bright Star Catalog from \fIbright-star-catalog.tsv\fP (override with
+\fBLOST_BSC_PATH\fP). Star names in the database are HR numbers.
+
+To identify against Hipparcos-1 instead, run \fBmake hipparcos-catalog.tsv\fP and set
+\fBLOST_HIP_PATH\fP to that file before running \fBdatabase\fP or \fBpipeline\fP. Rebuild the \fI.dat\fP
+after switching catalogs. Printed star IDs will be HIP numbers.
+
+The Hipparcos extract is about 15,000 stars at V <= 7. The default \fB--max-stars\fP 10000 will drop
+the dimmest unless you raise it (for example \fB--max-stars 20000\fP).
+
 .SH STAR IDENTIFICATION ALGO <-> DATABASE TYPE
 
 Different star identification algorithms require different databases:
@@ -79,6 +91,19 @@ Sets the maximum distance \fImax\fP (degrees). Defaults to 15 if option is not s
 .TP
 \fB--kvector-distance-bins\fP \fInum-bins\fP
 Sets the number of distance bins in the kvector building method to \fInum-bins\fP.  Defaults to 10000 if option is not selected, which is pretty reasonable for most cases.
+
+.SH TETRA DATABASE OPTIONS
+
+The Tetra database is needed for the Tetra star identification algorithm. Its primary payload is
+a pattern catalog , essentially a large hash table that stores 4-star patterns
+
+.TP
+\fB--tetra\fP
+Generate a Tetra database
+
+.TP
+\fB--tetra-max-angle \fImax\fP
+Sets the maximum allowable angle between stars in a Tetra pattern to \fImax\fP (degrees). Defaults to 12 if option is not selected.
 
 .SH OTHER OPTIONS
 

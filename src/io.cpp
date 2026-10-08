@@ -1,23 +1,25 @@
 #include "io.hpp"
 
-#include <cairo/cairo.h>
-#include <stdio.h>
-#include <inttypes.h>
-#include <math.h>
-#include <errno.h>
 #include <assert.h>
-#include <stdlib.h>
+#include <cairo/cairo.h>
+#include <errno.h>
+#include <inttypes.h>
 #include <limits.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 
-#include <vector>
-#include <string>
+#include <algorithm>
+#include <cmath>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <memory>
-#include <cstring>
 #include <random>
-#include <algorithm>
+#include <sstream>
+#include <string>
+#include <vector>
 #include <map>
 #include <chrono>
 
@@ -91,6 +93,40 @@ std::vector<CatalogStar> BscParse(std::string tsvPath) {
     return result;
 }
 
+/// Parse Hipparcos-1 from a VizieR TSV: ra|dec|HIP|Vmag
+Catalog HipparcosParse(std::string tsvPath) {
+    Catalog result;
+    FILE *file;
+    decimal raj2000, dej2000;
+    int magnitudeHigh, magnitudeLow, name;
+
+    file = fopen(tsvPath.c_str(), "r");
+    if (file == NULL) {
+        printf("Error opening file: %s\n", strerror(errno));
+        exit(1);
+        return result;
+    }
+
+    #ifdef LOST_FLOAT_MODE
+        std::string format = "%f|%f|%d|%d.%d";
+    #else
+        std::string format = "%lf|%lf|%d|%d.%d";
+    #endif
+
+    while (EOF != fscanf(file, format.c_str(),
+                         &raj2000, &dej2000,
+                         &name,
+                         &magnitudeHigh, &magnitudeLow)) {
+        result.push_back(CatalogStar(DegToRad(raj2000),
+                                     DegToRad(dej2000),
+                                     magnitudeHigh*100 + (magnitudeHigh < 0 ? -magnitudeLow : magnitudeLow),
+                                     name));
+    }
+
+    fclose(file);
+    return result;
+}
+
 #ifndef DEFAULT_BSC_PATH
 #define DEFAULT_BSC_PATH "bright-star-catalog.tsv"
 #endif
@@ -102,8 +138,14 @@ const Catalog &CatalogRead() {
 
     if (!readYet) {
         readYet = true;
-        char *tsvPath = getenv("LOST_BSC_PATH");
-        catalog = BscParse(tsvPath ? tsvPath : DEFAULT_BSC_PATH);
+        char *hipPath = getenv("LOST_HIP_PATH");
+        if (hipPath) {
+            catalog = HipparcosParse(hipPath);
+            assert(catalog.size() > 10000);
+        } else {
+            char *tsvPath = getenv("LOST_BSC_PATH");
+            catalog = BscParse(tsvPath ? tsvPath : DEFAULT_BSC_PATH);
+        }
         // perform essential narrowing
         // remove all stars with exactly the same position as another, keeping the one with brighter magnitude
         std::sort(catalog.begin(), catalog.end(), [](const CatalogStar &a, const CatalogStar &b) {
@@ -277,6 +319,28 @@ SerializeContext serFromDbValues(const DatabaseOptions &values) {
     return SerializeContext(values.swapIntegerEndianness, values.swapDecimalEndianness);
 }
 
+// void BuildTetraDatabase(MultiDatabaseBuilder *builder, const Catalog &catalog, float maxAngle,
+//                         const std::vector<uint16_t> &pattStars,
+//                         const std::vector<uint16_t> &catIndices) {
+//     // long length = SerializeTetraDatabase(catalog, maxAngle, nullptr, pattStars, catIndices, false);
+//     long length = SerializeLengthTetraDatabase(catalog, maxAngle, pattStars, catIndices);
+//     unsigned char *buffer = builder->AddSubDatabase(TetraDatabase::kMagicValue, length);
+//     if (buffer == nullptr) {
+//         std::cerr << "Error: No room for Tetra database" << std::endl;
+//     }
+//     // SerializeTetraDatabase(catalog, maxAngle, buffer, pattStars, catIndices, true);
+//     SerializeTetraDatabase(catalog, maxAngle, buffer, pattStars, catIndices);
+// }
+
+// void GenerateTetraDatabases(MultiDatabaseBuilder *builder, const Catalog &catalog,
+//                             const DatabaseOptions &values, const std::vector<uint16_t> &pattStars,
+//                             const std::vector<uint16_t> &catIndices) {
+//     float maxAngle = values.tetraMaxAngle;
+//     BuildTetraDatabase(builder, catalog, maxAngle, pattStars, catIndices);
+// }
+// /// Generate and add databases to the given multidatabase builder according to the command line options in `values`
+// void GenerateDatabases(MultiDatabaseBuilder *builder, const Catalog &catalog, const DatabaseOptions &values) {
+
 MultiDatabaseDescriptor GenerateDatabases(const Catalog &catalog, const DatabaseOptions &values) {
     MultiDatabaseDescriptor dbEntries;
 
@@ -285,14 +349,36 @@ MultiDatabaseDescriptor GenerateDatabases(const Catalog &catalog, const Database
     SerializeCatalog(&catalogSer, catalog, false, true);
     dbEntries.emplace_back(kCatalogMagicValue, catalogSer.buffer);
 
+    bool dbProvided = false;
+
     if (values.kvector) {
+        dbProvided = true;
         decimal minDistance = DegToRad(values.kvectorMinDistance);
         decimal maxDistance = DegToRad(values.kvectorMaxDistance);
         long numBins = values.kvectorNumDistanceBins;
         SerializeContext ser = serFromDbValues(values);
         SerializePairDistanceKVector(&ser, catalog, minDistance, maxDistance, numBins);
         dbEntries.emplace_back(PairDistanceKVectorDatabase::kMagicValue, ser.buffer);
-    } else {
+    }
+
+    if (values.tetra) {
+        dbProvided = true;
+        decimal maxAngleDeg = values.tetraMaxAngle;
+        std::cerr << "Tetra max angle: " << maxAngleDeg << std::endl;
+
+        auto tetraPrepRes = TetraPreparePattCat(catalog, maxAngleDeg);
+        std::vector<uint16_t> catIndices = tetraPrepRes.first;
+        std::vector<uint16_t> pattStarsInds = tetraPrepRes.second;
+
+        std::cerr << "Tetra processed catalog has " << catIndices.size() << " stars." << std::endl;
+        std::cerr << "Number of pattern stars: " << pattStarsInds.size() << std::endl;
+
+        SerializeContext ser = serFromDbValues(values);
+        SerializeTetraDatabase(&ser, catalog, maxAngleDeg, pattStarsInds, catIndices);
+        dbEntries.emplace_back(TetraDatabase::kMagicValue, ser.buffer);
+    }
+
+    if (!dbProvided) {
         std::cerr << "No database builder selected -- no database generated." << std::endl;
         exit(1);
     }
@@ -396,6 +482,105 @@ PipelineInputList GetPngPipelineInput(const PipelineOptions &values) {
 
     result.push_back(std::unique_ptr<PipelineInput>(new PngPipelineInput(cairoSurface, cam, CatalogRead())));
     cairo_surface_destroy(cairoSurface);
+    return result;
+}
+
+CentroidsPipelineInput::CentroidsPipelineInput(Stars stars, Camera camera, const Catalog &catalog)
+    : stars(std::move(stars)), camera(camera), catalog(catalog) {}
+
+/// Parse whitespace-separated centroid lines: x y [brightness]. Comments start with #.
+static Stars ParseCentroidStream(std::istream &in, const Camera &camera, const std::string &sourceName) {
+    Stars stars;
+    std::string line;
+    int lineNumber = 0;
+    while (std::getline(in, line)) {
+        lineNumber++;
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        std::string::size_type comment = line.find('#');
+        if (comment != std::string::npos) {
+            line = line.substr(0, comment);
+        }
+
+        std::istringstream iss(line);
+        decimal x;
+        decimal y;
+        if (!(iss >> x)) {
+            continue;
+        }
+        if (!(iss >> y)) {
+            std::cerr << "ERROR: " << sourceName << " line " << lineNumber
+                      << " has an x coordinate but no y coordinate." << std::endl;
+            exit(1);
+        }
+
+        decimal brightness = 0;
+        bool hasBrightness = static_cast<bool>(iss >> brightness);
+        int magnitude = 0;
+        if (hasBrightness) {
+            magnitude = static_cast<int>(std::lround(brightness));
+            if (magnitude < 0) {
+                std::cerr << "ERROR: " << sourceName << " line " << lineNumber
+                          << " has negative brightness " << brightness
+                          << ". Brightness must be >= 0 (larger is brighter)." << std::endl;
+                exit(1);
+            }
+        }
+
+        Vec2 position = {x, y};
+        if (!camera.InSensor(position)) {
+            std::cerr << "ERROR: " << sourceName << " line " << lineNumber
+                      << " centroid (" << x << ", " << y
+                      << ") is outside the sensor "
+                      << camera.XResolution() << "x" << camera.YResolution() << "." << std::endl;
+            exit(1);
+        }
+
+        stars.push_back(Star(x, y, DECIMAL(1.0), DECIMAL(1.0), magnitude));
+    }
+
+    if (stars.empty()) {
+        std::cerr << "ERROR: " << sourceName << " contains no centroids." << std::endl;
+        exit(1);
+    }
+
+    return stars;
+}
+
+/// Create a CentroidsPipelineInput using command line options.
+PipelineInputList GetCentroidsPipelineInput(const PipelineOptions &values) {
+    if (values.centroidAlgo != "") {
+        std::cerr << "ERROR: --centroid-algo cannot be used with --centroids (there is no image to centroid)." << std::endl;
+        exit(1);
+    }
+    if (values.xResolution <= 0 || values.yResolution <= 0) {
+        std::cerr << "ERROR: --centroids requires --x-resolution and --y-resolution." << std::endl;
+        exit(1);
+    }
+
+    decimal focalLengthPixels = FocalLengthFromOptions(values, values.xResolution);
+    Camera cam = Camera(focalLengthPixels, values.xResolution, values.yResolution);
+
+    std::string sourceName = values.centroids;
+    Stars stars;
+    if (values.centroids == "-" || values.centroids == "stdin") {
+        sourceName = "stdin";
+        stars = ParseCentroidStream(std::cin, cam, sourceName);
+    } else {
+        std::ifstream file(values.centroids);
+        if (!file) {
+            std::cerr << "ERROR: Could not open centroids file: " << values.centroids << std::endl;
+            exit(1);
+        }
+        stars = ParseCentroidStream(file, cam, sourceName);
+    }
+
+    std::cerr << "Read " << stars.size() << " centroids from " << sourceName << std::endl;
+
+    PipelineInputList result;
+    result.push_back(std::unique_ptr<PipelineInput>(
+        new CentroidsPipelineInput(std::move(stars), cam, CatalogRead())));
     return result;
 }
 
@@ -547,6 +732,7 @@ GeneratedPipelineInput::GeneratedPipelineInput(const Catalog &catalog,
         catalogWithFalse.push_back(CatalogStar(ra, de, magnitude, -1));
     }
 
+    std::cout << "catalog size: " << catalog.size() << ", with false stars: " << catalogWithFalse.size() << std::endl;
     for (int i = 0; i < (int)catalogWithFalse.size(); i++) {
         bool isTrueStar = i < (int)catalog.size();
 
@@ -734,17 +920,12 @@ static Attitude RandomAttitude(std::default_random_engine* pReng) {
 PipelineInputList GetGeneratedPipelineInput(const PipelineOptions &values) {
     // TODO: prompt for attitude, imagewidth, etc and then construct a GeneratedPipelineInput
 
-    int seed;
-
-    // time based seed if option specified
-    if (values.timeSeed) {
-        seed = time(0);
-    } else {
-        seed = values.generateSeed;
-    }
+    // Always use std::random_device for non-deterministic seed
+    std::random_device rd;
+    int seed = rd();
 
     std::default_random_engine attitudeRng(seed);
-    std::default_random_engine noiseRng(seed);
+    std::default_random_engine noiseRng(values.generateSeed);
 
     // TODO: allow random angle generation?
     Attitude attitude = Attitude(SphericalToQuaternion(DegToRad(values.generateRa),
@@ -760,13 +941,17 @@ PipelineInputList GetGeneratedPipelineInput(const PipelineOptions &values) {
 
 
     for (int i = 0; i < values.generate; i++) {
-
-
         Attitude inputAttitude;
         if (values.generateRandomAttitudes) {
             inputAttitude = RandomAttitude(&attitudeRng);
+            std::cout << "Random attitude:" << std::endl;
+            EulerAngles attitudeAngles = inputAttitude.ToSpherical();
+            std::cout << RadToDeg(attitudeAngles.ra) << ", " << RadToDeg(attitudeAngles.de) << ", "
+                      << RadToDeg(attitudeAngles.roll) << std::endl;
         } else {
             inputAttitude = attitude;
+            std::cout << "Given attitude:" << std::endl;
+            std::cout << values.generateRa << ", " << values.generateDe << ", " << values.generateRoll << std::endl;
         }
 
         GeneratedPipelineInput *curr = new GeneratedPipelineInput(
@@ -804,13 +989,32 @@ PipelineInputList GetGeneratedPipelineInput(const PipelineOptions &values) {
 
 typedef PipelineInputList (*PipelineInputFactory)();
 
+static void ErrorIfCameraResolutionSet(const PipelineOptions &values) {
+    if (values.xResolution != 0 || values.yResolution != 0) {
+        std::cerr << "ERROR: --x-resolution and --y-resolution are only valid with --centroids." << std::endl;
+        exit(1);
+    }
+}
+
 /// Come up with a list of pipeline inputs based on command line options.
 PipelineInputList GetPipelineInput(const PipelineOptions &values) {
+    int numSources = (values.png != "") + (values.centroids != "") + (values.generate != 0);
+    if (numSources > 1) {
+        std::cerr << "ERROR: --png, --centroids, and --generate are mutually exclusive." << std::endl;
+        exit(1);
+    }
 
     if (values.png != "") {
+        ErrorIfCameraResolutionSet(values);
         return GetPngPipelineInput(values);
-    } else {
+    } else if (values.centroids != "") {
+        return GetCentroidsPipelineInput(values);
+    } else if (values.generate != 0) {
+        ErrorIfCameraResolutionSet(values);
         return GetGeneratedPipelineInput(values);
+    } else {
+        std::cerr << "ERROR: No pipeline input specified. Try --png, --centroids, or --generate." << std::endl;
+        exit(1);
     }
 }
 
@@ -885,7 +1089,11 @@ Pipeline SetPipeline(const PipelineOptions &values) {
     } else if (values.idAlgo == "gv") {
         result.starIdAlgorithm = std::unique_ptr<StarIdAlgorithm>(new GeometricVotingStarIdAlgorithm(DegToRad(values.angularTolerance)));
     } else if (values.idAlgo == "py") {
-        result.starIdAlgorithm = std::unique_ptr<StarIdAlgorithm>(new PyramidStarIdAlgorithm(DegToRad(values.angularTolerance), values.estimatedNumFalseStars, values.maxMismatchProb, 1000));
+        result.starIdAlgorithm = std::unique_ptr<StarIdAlgorithm>(new PyramidStarIdAlgorithm(
+            DegToRad(values.angularTolerance), values.estimatedNumFalseStars,
+            values.maxMismatchProb, 1000));
+    } else if (values.idAlgo == "tetra") {
+        result.starIdAlgorithm = std::unique_ptr<StarIdAlgorithm>(new TetraStarIdAlgorithm());
     } else if (values.idAlgo != "") {
         std::cout << "Illegal id algorithm." << std::endl;
         exit(1);
@@ -915,6 +1123,8 @@ PipelineOutput Pipeline::Go(const PipelineInput &input) {
     // there, execute each successive stage of the pipeline using the output of the last stage
     // (human centipede) until there are no more stages set.
     PipelineOutput result;
+
+    // std::cerr << *input.InputCamera() << std::endl;
 
     const Image *inputImage = input.InputImage();
     const Stars *inputStars = input.InputStars();
@@ -976,6 +1186,27 @@ PipelineOutput Pipeline::Go(const PipelineInput &input) {
     } else if (centroidAlgorithm) {
         std::cerr << "ERROR: Centroid algorithm specified, but no input image to run it on." << std::endl;
         exit(1);
+    } else if (inputStars) {
+        Stars stars = *inputStars;
+        // Generated stars can have negative magnitudes; only filter file-loaded centroids, which
+        // have no pre-existing star IDs whose indices would be invalidated by filtering.
+        if (!inputStarIds && (centroidMinMagnitude > 0 || centroidMinStars > 0)) {
+            int minMagnitude = centroidMinMagnitude;
+            if (centroidMinStars > 0 && centroidMinStars < (int)stars.size()) {
+                Stars magSortedStars = stars;
+                std::sort(magSortedStars.begin(), magSortedStars.end(), [](const Star &a, const Star &b) { return a.magnitude > b.magnitude; });
+                minMagnitude = std::max(minMagnitude, magSortedStars[centroidMinStars - 1].magnitude);
+            }
+            Stars filteredStars;
+            for (const Star &star : stars) {
+                if (star.magnitude >= minMagnitude) {
+                    filteredStars.push_back(star);
+                }
+            }
+            stars = std::move(filteredStars);
+        }
+        result.stars = std::unique_ptr<Stars>(new Stars(std::move(stars)));
+        inputStars = result.stars.get();
     }
 
     if (starIdAlgorithm && database && inputStars && input.InputCamera()) {
@@ -1704,7 +1935,7 @@ void PipelineComparison(const PipelineInputList &expected,
                         const std::vector<PipelineOutput> &actual,
                         const PipelineOptions &values) {
     if (actual.size() == 0) {
-        std::cerr << "ERROR: No output! Did you specify any input images? Try --png or --generate." << std::endl;
+        std::cerr << "ERROR: No output! Did you specify any input images? Try --png, --centroids, or --generate." << std::endl;
         exit(1);
     }
 
@@ -1739,8 +1970,8 @@ void PipelineComparison(const PipelineInputList &expected,
                               PipelineComparatorPlotExpected, values.plotExpected, true);
     }
     if (values.plotOutput != "") {
-        LOST_PIPELINE_COMPARE(actual.size() == 1 && (actual[0].stars || actual[0].starIds),
-                              "--plot-output requires exactly 1 output image, and for either centroids or star IDs to be available on that output image. " + std::to_string(actual.size()) + " many output images were provided.",
+        LOST_PIPELINE_COMPARE(expected[0]->InputImage() && actual.size() == 1 && (actual[0].stars || actual[0].starIds),
+                              "--plot-output requires exactly 1 input image, and for either centroids or star IDs to be available. " + std::to_string(actual.size()) + " many outputs were provided.",
                               PipelineComparatorPlotOutput, values.plotOutput, true);
     }
     if (values.printExpectedCentroids != "") {

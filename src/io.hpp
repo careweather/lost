@@ -5,27 +5,26 @@
 
 #include <cairo/cairo.h>
 
-#include <random>
-#include <vector>
-#include <map>
-#include <utility>
-#include <string>
-#include <sstream>
 #include <iostream>
+#include <map>
 #include <memory>
-
+#include <random>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #ifndef CAIRO_HAS_PNG_FUNCTIONS
 #error LOST requires Cairo to be compiled with PNG support
 #endif
 
-#include "centroiders.hpp"
-#include "star-utils.hpp"
-#include "star-id.hpp"
-#include "camera.hpp"
-#include "attitude-utils.hpp"
 #include "attitude-estimators.hpp"
+#include "attitude-utils.hpp"
+#include "camera.hpp"
+#include "centroiders.hpp"
 #include "databases.hpp"
+#include "star-id.hpp"
+#include "star-utils.hpp"
 
 namespace lost {
 
@@ -45,7 +44,8 @@ private:
     std::ostream *stream;
 };
 
-// use the environment variable LOST_BSC_PATH, or read from ./bright-star-catalog.tsv
+// LOST_HIP_PATH -> HipparcosParse; else LOST_BSC_PATH or ./bright-star-catalog.tsv -> BscParse
+Catalog HipparcosParse(std::string tsvPath);
 const Catalog &CatalogRead();
 // Convert a cairo surface to array of grayscale bytes
 unsigned char *SurfaceToGrayscaleImage(cairo_surface_t *cairoSurface);
@@ -179,6 +179,22 @@ private:
     const Catalog &catalog;
 };
 
+/// A pipeline input created by reading a list of star centroids from a text file or stdin.
+/// Pixel coordinates, origin at the top left. Optional brightness: larger is brighter.
+class CentroidsPipelineInput : public PipelineInput {
+public:
+    CentroidsPipelineInput(Stars, Camera, const Catalog &);
+
+    const Stars *InputStars() const override { return &stars; };
+    const Camera *InputCamera() const override { return &camera; };
+    const Catalog &GetCatalog() const override { return catalog; };
+
+private:
+    Stars stars;
+    Camera camera;
+    const Catalog &catalog;
+};
+
 /////////////////////
 // PIPELINE OUTPUT //
 /////////////////////
@@ -296,6 +312,11 @@ SerializeContext serFromDbValues(const DatabaseOptions &values);
 /// Appropriately create descriptors for all requested databases according to command-line options.
 /// @sa SerializeMultiDatabase
 MultiDatabaseDescriptor GenerateDatabases(const Catalog &, const DatabaseOptions &values);
+
+// // TODO:  can we avoid the split?
+// void GenerateTetraDatabases(MultiDatabaseBuilder *, const Catalog &, const DatabaseOptions &values,
+//                             const std::vector<uint16_t> &pattStars,
+//                             const std::vector<uint16_t> &catIndices);
 
 /////////////////////
 // INSPECT CATALOG //

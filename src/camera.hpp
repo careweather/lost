@@ -41,7 +41,7 @@ public:
     /// Focal length in pixels
     decimal FocalLength() const { return focalLength; };
     /// Horizontal field of view in radians
-    decimal Fov() const;
+    decimal Fov() const; // in radians
 
     void SetFocalLength(decimal focalLength) { this->focalLength = focalLength; }
 
